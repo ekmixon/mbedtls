@@ -25,11 +25,11 @@ class Results:
         sys.stderr.write((fmt + '\n').format(*args, **kwargs))
 
     def error(self, fmt, *args, **kwargs):
-        self.log('Error: ' + fmt, *args, **kwargs)
+        self.log(f'Error: {fmt}', *args, **kwargs)
         self.error_count += 1
 
     def warning(self, fmt, *args, **kwargs):
-        self.log('Warning: ' + fmt, *args, **kwargs)
+        self.log(f'Warning: {fmt}', *args, **kwargs)
         self.warning_count += 1
 
 class TestCaseOutcomes:

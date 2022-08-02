@@ -40,9 +40,9 @@ T = TypeVar('T') #pylint: disable=invalid-name
 def psa_want_symbol(name: str) -> str:
     """Return the PSA_WANT_xxx symbol associated with a PSA crypto feature."""
     if name.startswith('PSA_'):
-        return name[:4] + 'WANT_' + name[4:]
+        return f'{name[:4]}WANT_{name[4:]}'
     else:
-        raise ValueError('Unable to determine the PSA_WANT_ symbol for ' + name)
+        raise ValueError(f'Unable to determine the PSA_WANT_ symbol for {name}')
 
 def finish_family_dependency(dep: str, bits: int) -> str:
     """Finish dep if it's a family dependency symbol prefix.
@@ -96,8 +96,10 @@ def hack_dependencies_not_implemented(dependencies: List[str]) -> None:
     if _implemented_dependencies is None:
         _implemented_dependencies = \
             read_implemented_dependencies('include/psa/crypto_config.h')
-    if not all(dep.lstrip('!') in _implemented_dependencies
-               for dep in dependencies):
+    if any(
+        dep.lstrip('!') not in _implemented_dependencies
+        for dep in dependencies
+    ):
         dependencies.append('DEPENDENCY_NOT_IMPLEMENTED_YET')
 
 
@@ -147,11 +149,13 @@ def test_case_for_key_type_not_supported(
     short_key_type = re.sub(r'PSA_(KEY_TYPE|ECC_FAMILY)_', r'', key_type)
     adverb = 'not' if dependencies else 'never'
     if param_descr:
-        adverb = param_descr + ' ' + adverb
-    tc.set_description('PSA {} {} {}-bit {} supported'
-                       .format(verb, short_key_type, bits, adverb))
+        adverb = f'{param_descr} {adverb}'
+    tc.set_description(
+        f'PSA {verb} {short_key_type} {bits}-bit {adverb} supported'
+    )
+
     tc.set_dependencies(dependencies)
-    tc.set_function(verb + '_not_supported')
+    tc.set_function(f'{verb}_not_supported')
     tc.set_arguments([key_type] + list(args))
     return tc
 
@@ -198,17 +202,13 @@ class NotSupported:
                 test_case.hex_string(kt.key_material(bits)),
                 param_descr=param_descr,
             )
-            if not generate_dependencies and param is not None:
-                # If generation is impossible for this key type, rather than
-                # supported or not depending on implementation capabilities,
-                # only generate the test case once.
-                continue
-            yield test_case_for_key_type_not_supported(
-                'generate', kt.expression, bits,
-                finish_family_dependencies(generate_dependencies, bits),
-                str(bits),
-                param_descr=param_descr,
-            )
+            if generate_dependencies or param is None:
+                yield test_case_for_key_type_not_supported(
+                    'generate', kt.expression, bits,
+                    finish_family_dependencies(generate_dependencies, bits),
+                    str(bits),
+                    param_descr=param_descr,
+                )
             # To be added: derive
 
     ECC_KEY_TYPES = ('PSA_KEY_TYPE_ECC_KEY_PAIR',
@@ -255,8 +255,8 @@ class StorageKey(psa_storage.Key):
         if not without_implicit_usage:
             for flag, implicit in self.IMPLICIT_USAGE_FLAGS.items():
                 if self.usage.value() & psa_storage.Expr(flag).value() and \
-                   self.usage.value() & psa_storage.Expr(implicit).value() == 0:
-                    self.usage = psa_storage.Expr(self.usage.string + ' | ' + implicit)
+                       self.usage.value() & psa_storage.Expr(implicit).value() == 0:
+                    self.usage = psa_storage.Expr(f'{self.usage.string} | {implicit}')
 
 class StorageTestData(StorageKey):
     """Representation of test case data for storage format testing."""
@@ -276,7 +276,7 @@ class StorageTestData(StorageKey):
         """
         super().__init__(**kwargs)
         self.description = description #type: str
-        self.expected_usage = expected_usage if expected_usage else self.usage.string #type: str
+        self.expected_usage = expected_usage or self.usage.string
 
 class StorageFormat:
     """Storage format stability test cases."""
@@ -306,14 +306,14 @@ class StorageFormat:
         """
         verb = 'save' if self.forward else 'read'
         tc = test_case.TestCase()
-        tc.set_description('PSA storage {}: {}'.format(verb, key.description))
+        tc.set_description(f'PSA storage {verb}: {key.description}')
         dependencies = automatic_dependencies(
             key.lifetime.string, key.type.string,
             key.expected_usage, key.alg.string, key.alg2.string,
         )
         dependencies = finish_family_dependencies(dependencies, key.bits)
         tc.set_dependencies(dependencies)
-        tc.set_function('key_storage_' + verb)
+        tc.set_function(f'key_storage_{verb}')
         if self.forward:
             extra_arguments = []
         else:
@@ -345,14 +345,19 @@ class StorageFormat:
         short = re.sub(r'PSA_KEY_LIFETIME_FROM_PERSISTENCE_AND_LOCATION',
                        r'', short)
         short = re.sub(r'PSA_KEY_[A-Z]+_', r'', short)
-        description = 'lifetime: ' + short
-        key = StorageTestData(version=self.version,
-                              id=1, lifetime=lifetime,
-                              type='PSA_KEY_TYPE_RAW_DATA', bits=8,
-                              usage='PSA_KEY_USAGE_EXPORT', alg=0, alg2=0,
-                              material=b'L',
-                              description=description)
-        return key
+        description = f'lifetime: {short}'
+        return StorageTestData(
+            version=self.version,
+            id=1,
+            lifetime=lifetime,
+            type='PSA_KEY_TYPE_RAW_DATA',
+            bits=8,
+            usage='PSA_KEY_USAGE_EXPORT',
+            alg=0,
+            alg2=0,
+            material=b'L',
+            description=description,
+        )
 
     def all_keys_for_lifetimes(self) -> Iterator[StorageTestData]:
         """Generate test keys covering lifetimes."""
@@ -379,26 +384,36 @@ class StorageFormat:
         if short is None:
             short = re.sub(r'\bPSA_KEY_USAGE_', r'', usage)
         extra_desc = ' with implication' if test_implicit_usage else ''
-        description = 'usage' + extra_desc + ': ' + short
-        key1 = StorageTestData(version=self.version,
-                               id=1, lifetime=0x00000001,
-                               type='PSA_KEY_TYPE_RAW_DATA', bits=8,
-                               expected_usage=usage,
-                               usage=usage, alg=0, alg2=0,
-                               material=b'K',
-                               description=description)
-        yield key1
+        description = f'usage{extra_desc}: {short}'
+        yield StorageTestData(
+            version=self.version,
+            id=1,
+            lifetime=0x00000001,
+            type='PSA_KEY_TYPE_RAW_DATA',
+            bits=8,
+            expected_usage=usage,
+            usage=usage,
+            alg=0,
+            alg2=0,
+            material=b'K',
+            description=description,
+        )
 
         if test_implicit_usage:
             description = 'usage without implication' + ': ' + short
-            key2 = StorageTestData(version=self.version,
-                                   id=1, lifetime=0x00000001,
-                                   type='PSA_KEY_TYPE_RAW_DATA', bits=8,
-                                   without_implicit_usage=True,
-                                   usage=usage, alg=0, alg2=0,
-                                   material=b'K',
-                                   description=description)
-            yield key2
+            yield StorageTestData(
+                version=self.version,
+                id=1,
+                lifetime=0x00000001,
+                type='PSA_KEY_TYPE_RAW_DATA',
+                bits=8,
+                without_implicit_usage=True,
+                usage=usage,
+                alg=0,
+                alg2=0,
+                material=b'K',
+                description=description,
+            )
 
     def generate_keys_for_usage_flags(self, **kwargs) -> Iterator[StorageTestData]:
         """Generate test keys covering usage flags."""
@@ -430,22 +445,27 @@ class StorageFormat:
         parameter is supported.
         """
         kt = crypto_knowledge.KeyType(key_type, params)
+        usage_flags = 'PSA_KEY_USAGE_EXPORT'
+        alg = 0
+        alg2 = 0
         for bits in kt.sizes_to_test():
-            usage_flags = 'PSA_KEY_USAGE_EXPORT'
-            alg = 0
-            alg2 = 0
             key_material = kt.key_material(bits)
             short_expression = re.sub(r'\bPSA_(?:KEY_TYPE|ECC_FAMILY)_',
                                       r'',
                                       kt.expression)
-            description = 'type: {} {}-bit'.format(short_expression, bits)
-            key = StorageTestData(version=self.version,
-                                  id=1, lifetime=0x00000001,
-                                  type=kt.expression, bits=bits,
-                                  usage=usage_flags, alg=alg, alg2=alg2,
-                                  material=key_material,
-                                  description=description)
-            yield key
+            description = f'type: {short_expression} {bits}-bit'
+            yield StorageTestData(
+                version=self.version,
+                id=1,
+                lifetime=0x00000001,
+                type=kt.expression,
+                bits=bits,
+                usage=usage_flags,
+                alg=alg,
+                alg2=alg2,
+                material=key_material,
+                description=description,
+            )
 
     def all_keys_for_types(self) -> Iterator[StorageTestData]:
         """Generate test keys covering key types and their representations."""
@@ -461,20 +481,31 @@ class StorageFormat:
         descr = re.sub(r'PSA_ALG_', r'', alg)
         descr = re.sub(r',', r', ', re.sub(r' +', r'', descr))
         usage = 'PSA_KEY_USAGE_EXPORT'
-        key1 = StorageTestData(version=self.version,
-                               id=1, lifetime=0x00000001,
-                               type='PSA_KEY_TYPE_RAW_DATA', bits=8,
-                               usage=usage, alg=alg, alg2=0,
-                               material=b'K',
-                               description='alg: ' + descr)
-        yield key1
-        key2 = StorageTestData(version=self.version,
-                               id=1, lifetime=0x00000001,
-                               type='PSA_KEY_TYPE_RAW_DATA', bits=8,
-                               usage=usage, alg=0, alg2=alg,
-                               material=b'L',
-                               description='alg2: ' + descr)
-        yield key2
+        yield StorageTestData(
+            version=self.version,
+            id=1,
+            lifetime=0x00000001,
+            type='PSA_KEY_TYPE_RAW_DATA',
+            bits=8,
+            usage=usage,
+            alg=alg,
+            alg2=0,
+            material=b'K',
+            description=f'alg: {descr}',
+        )
+
+        yield StorageTestData(
+            version=self.version,
+            id=1,
+            lifetime=0x00000001,
+            type='PSA_KEY_TYPE_RAW_DATA',
+            bits=8,
+            usage=usage,
+            alg=0,
+            alg2=alg,
+            material=b'L',
+            description=f'alg2: {descr}',
+        )
 
     def all_keys_for_algorithms(self) -> Iterator[StorageTestData]:
         """Generate test keys covering algorithm encodings."""
@@ -534,8 +565,8 @@ class StorageFormatV0(StorageFormat):
         bits = key_type.sizes_to_test()[0]
         implicit_usage = StorageKey.IMPLICIT_USAGE_FLAGS[implyer_usage]
         usage_flags = 'PSA_KEY_USAGE_EXPORT'
-        material_usage_flags = usage_flags + ' | ' + implyer_usage
-        expected_usage_flags = material_usage_flags + ' | ' + implicit_usage
+        material_usage_flags = f'{usage_flags} | {implyer_usage}'
+        expected_usage_flags = f'{material_usage_flags} | {implicit_usage}'
         alg2 = 0
         key_material = key_type.key_material(bits)
         usage_expression = re.sub(r'PSA_KEY_USAGE_', r'', implyer_usage)
@@ -544,18 +575,22 @@ class StorageFormatV0(StorageFormat):
         key_type_expression = re.sub(r'\bPSA_(?:KEY_TYPE|ECC_FAMILY)_',
                                      r'',
                                      key_type.expression)
-        description = 'implied by {}: {} {} {}-bit'.format(
-            usage_expression, alg_expression, key_type_expression, bits)
-        key = StorageTestData(version=self.version,
-                              id=1, lifetime=0x00000001,
-                              type=key_type.expression, bits=bits,
-                              usage=material_usage_flags,
-                              expected_usage=expected_usage_flags,
-                              without_implicit_usage=True,
-                              alg=alg, alg2=alg2,
-                              material=key_material,
-                              description=description)
-        return key
+        description = f'implied by {usage_expression}: {alg_expression} {key_type_expression} {bits}-bit'
+
+        return StorageTestData(
+            version=self.version,
+            id=1,
+            lifetime=0x00000001,
+            type=key_type.expression,
+            bits=bits,
+            usage=material_usage_flags,
+            expected_usage=expected_usage_flags,
+            without_implicit_usage=True,
+            alg=alg,
+            alg2=alg2,
+            material=key_material,
+            description=description,
+        )
 
     def gather_key_types_for_sign_alg(self) -> Dict[str, List[str]]:
         # pylint: disable=too-many-locals
@@ -598,7 +633,7 @@ class StorageFormatV0(StorageFormat):
                         key_type_keywords.remove(keyword2)
 
                 if key_type_keywords.isdisjoint(incompatible_key_type_keywords) and\
-                   not key_type_keywords.isdisjoint(alg_keywords):
+                       not key_type_keywords.isdisjoint(alg_keywords):
                     if alg in alg_with_keys:
                         alg_with_keys[alg].append(key_type)
                     else:
@@ -639,7 +674,7 @@ class TestGenerator:
 
     def filename_for(self, basename: str) -> str:
         """The location of the data file with the specified base name."""
-        return posixpath.join(self.test_suite_directory, basename + '.data')
+        return posixpath.join(self.test_suite_directory, f'{basename}.data')
 
     def write_test_data_file(self, basename: str,
                              test_cases: Iterable[test_case.TestCase]) -> None:

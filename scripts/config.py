@@ -98,10 +98,7 @@ class Config:
 
         If a #define for name is present but commented out, return default.
         """
-        if name in self.settings:
-            return self.settings[name].value
-        else:
-            return default
+        return self.settings[name].value if name in self.settings else default
 
     def __setitem__(self, name, value):
         """If name is known, set its value.
@@ -162,9 +159,7 @@ def is_full_section(section):
 
 def realfull_adapter(_name, active, section):
     """Activate all symbols found in the system and feature sections."""
-    if not is_full_section(section):
-        return active
-    return True
+    return True if is_full_section(section) else active
 
 # The goal of the full configuration is to have everything that can be tested
 # together. This includes deprecated or insecure options. It excludes:
@@ -224,15 +219,11 @@ def include_in_full(name):
     """Rules for symbols in the "full" configuration."""
     if name in EXCLUDE_FROM_FULL:
         return False
-    if name.endswith('_ALT'):
-        return is_seamless_alt(name)
-    return True
+    return is_seamless_alt(name) if name.endswith('_ALT') else True
 
 def full_adapter(name, active, section):
     """Config adapter for "full"."""
-    if not is_full_section(section):
-        return active
-    return include_in_full(name)
+    return include_in_full(name) if is_full_section(section) else active
 
 # The baremetal configuration excludes options that require a library or
 # operating system feature that is typically not present on bare metal
@@ -259,9 +250,7 @@ EXCLUDE_FROM_BAREMETAL = frozenset([
 
 def keep_in_baremetal(name):
     """Rules for symbols in the "baremetal" configuration."""
-    if name in EXCLUDE_FROM_BAREMETAL:
-        return False
-    return True
+    return name not in EXCLUDE_FROM_BAREMETAL
 
 def baremetal_adapter(name, active, section):
     """Config adapter for "baremetal"."""
@@ -278,12 +267,10 @@ def include_in_crypto(name):
        name.startswith('MBEDTLS_SSL_') or \
        name.startswith('MBEDTLS_KEY_EXCHANGE_'):
         return False
-    if name in [
-            'MBEDTLS_DEBUG_C', # part of libmbedtls
-            'MBEDTLS_NET_C', # part of libmbedtls
-    ]:
-        return False
-    return True
+    return name not in [
+        'MBEDTLS_DEBUG_C',  # part of libmbedtls
+        'MBEDTLS_NET_C',  # part of libmbedtls
+    ]
 
 def crypto_adapter(adapter):
     """Modify an adapter to disable non-crypto symbols.
@@ -294,9 +281,8 @@ def crypto_adapter(adapter):
     def continuation(name, active, section):
         if not include_in_crypto(name):
             return False
-        if adapter is None:
-            return active
-        return adapter(name, active, section)
+        return active if adapter is None else adapter(name, active, section)
+
     return continuation
 
 def no_deprecated_adapter(adapter):
@@ -309,9 +295,8 @@ def no_deprecated_adapter(adapter):
     def continuation(name, active, section):
         if name == 'MBEDTLS_DEPRECATED_REMOVED':
             return True
-        if adapter is None:
-            return active
-        return adapter(name, active, section)
+        return active if adapter is None else adapter(name, active, section)
+
     return continuation
 
 class ConfigFile(Config):
@@ -348,7 +333,7 @@ class ConfigFile(Config):
 
     def set(self, name, value=None):
         if name not in self.settings:
-            self.templates.append((name, '', '#define ' + name + ' '))
+            self.templates.append((name, '', f'#define {name} '))
         super().set(name, value)
 
     _define_line_regexp = (r'(?P<indentation>\s*)' +
@@ -368,17 +353,19 @@ class ConfigFile(Config):
         m = re.match(self._config_line_regexp, line)
         if m is None:
             return line
-        elif m.group('section'):
-            self.current_section = m.group('section')
+        elif m['section']:
+            self.current_section = m['section']
             return line
         else:
-            active = not m.group('commented_out')
-            name = m.group('name')
-            value = m.group('value')
-            template = (name,
-                        m.group('indentation'),
-                        m.group('define') + name +
-                        m.group('arguments') + m.group('separator'))
+            active = not m['commented_out']
+            name = m['name']
+            value = m['value']
+            template = (
+                name,
+                m['indentation'],
+                ((m['define'] + name + m['arguments']) + m['separator']),
+            )
+
             self.settings[name] = Setting(active, name, value,
                                           self.current_section)
             return template

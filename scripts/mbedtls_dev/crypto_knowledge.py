@@ -43,12 +43,11 @@ class KeyType:
         For key types constructed from a macro with arguments, this is the
         name of the macro, and the arguments are in `self.params`.
         """
-        if params is None:
-            if '(' in self.name:
-                m = re.match(r'(\w+)\s*\((.*)\)\Z', self.name)
-                assert m is not None
-                self.name = m.group(1)
-                params = m.group(2).split(',')
+        if params is None and '(' in self.name:
+            m = re.match(r'(\w+)\s*\((.*)\)\Z', self.name)
+            assert m is not None
+            self.name = m[1]
+            params = m[2].split(',')
         self.params = (None if params is None else
                        [param.strip() for param in params])
         """The parameters of the key type, if there are any.
@@ -125,12 +124,13 @@ class KeyType:
         """
         if self.expression in ASYMMETRIC_KEY_DATA:
             if bits not in ASYMMETRIC_KEY_DATA[self.expression]:
-                raise ValueError('No key data for {}-bit {}'
-                                 .format(bits, self.expression))
+                raise ValueError(f'No key data for {bits}-bit {self.expression}')
             return ASYMMETRIC_KEY_DATA[self.expression][bits]
         if bits % 8 != 0:
-            raise ValueError('Non-integer number of bytes: {} bits for {}'
-                             .format(bits, self.expression))
+            raise ValueError(
+                f'Non-integer number of bytes: {bits} bits for {self.expression}'
+            )
+
         length = bits // 8
         if self.name == 'PSA_KEY_TYPE_DES':
             # "644573206b457901644573206b457902644573206b457904"

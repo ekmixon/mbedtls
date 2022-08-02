@@ -100,9 +100,8 @@ class TestDataParser:
             # Check dependencies
             dependencies = []
             line = next(data_f).strip()
-            match = re.search('depends_on:(.*)', line)
-            if match:
-                dependencies = [int(x) for x in match.group(1).split(':')]
+            if match := re.search('depends_on:(.*)', line):
+                dependencies = [int(x) for x in match[1].split(':')]
                 line = next(data_f).strip()
 
             # Read test vectors
@@ -114,8 +113,10 @@ class TestDataParser:
             if args_count % 2 != 0:
                 err_str_fmt = "Number of test arguments({}) should be even: {}"
                 raise TestDataParserError(err_str_fmt.format(args_count, line))
-            grouped_args = [(args[i * 2], args[(i * 2) + 1])
-                            for i in range(int(len(args)/2))]
+            grouped_args = [
+                (args[i * 2], args[(i * 2) + 1]) for i in range(len(args) // 2)
+            ]
+
             self.tests.append((name, function_name, dependencies,
                                grouped_args))
 
@@ -164,19 +165,14 @@ class MbedTlsTest(BaseHostTest):
         self.test_index = -1
         self.dep_index = 0
         self.suite_passed = True
-        self.error_str = dict()
-        self.error_str[self.DEPENDENCY_SUPPORTED] = \
-            'DEPENDENCY_SUPPORTED'
-        self.error_str[self.KEY_VALUE_MAPPING_NOT_FOUND] = \
-            'KEY_VALUE_MAPPING_NOT_FOUND'
-        self.error_str[self.DEPENDENCY_NOT_SUPPORTED] = \
-            'DEPENDENCY_NOT_SUPPORTED'
-        self.error_str[self.DISPATCH_TEST_FN_NOT_FOUND] = \
-            'DISPATCH_TEST_FN_NOT_FOUND'
-        self.error_str[self.DISPATCH_INVALID_TEST_DATA] = \
-            'DISPATCH_INVALID_TEST_DATA'
-        self.error_str[self.DISPATCH_UNSUPPORTED_SUITE] = \
-            'DISPATCH_UNSUPPORTED_SUITE'
+        self.error_str = {
+            self.DEPENDENCY_SUPPORTED: 'DEPENDENCY_SUPPORTED',
+            self.KEY_VALUE_MAPPING_NOT_FOUND: 'KEY_VALUE_MAPPING_NOT_FOUND',
+            self.DEPENDENCY_NOT_SUPPORTED: 'DEPENDENCY_NOT_SUPPORTED',
+            self.DISPATCH_TEST_FN_NOT_FOUND: 'DISPATCH_TEST_FN_NOT_FOUND',
+            self.DISPATCH_INVALID_TEST_DATA: 'DISPATCH_INVALID_TEST_DATA',
+            self.DISPATCH_UNSUPPORTED_SUITE: 'DISPATCH_UNSUPPORTED_SUITE',
+        }
 
     def setup(self):
         """
@@ -190,13 +186,13 @@ class MbedTlsTest(BaseHostTest):
         data_file = os.path.join(script_dir, '..', 'mbedtls',
                                  suite_name, data_file)
         if os.path.exists(data_file):
-            self.log("Running tests from %s" % data_file)
+            self.log(f"Running tests from {data_file}")
             parser = TestDataParser()
             parser.parse(data_file)
             self.tests = parser.get_test_data()
             self.print_test_info()
         else:
-            self.log("Data file not found: %s" % data_file)
+            self.log(f"Data file not found: {data_file}")
             self.notify_complete(False)
 
     def print_test_info(self):
@@ -232,8 +228,7 @@ class MbedTlsTest(BaseHostTest):
             raise TestDataParserError("HEX parameter len should be mod of "
                                       "2: %s" % hex_str)
 
-        data_bytes = binascii.unhexlify(hex_str)
-        return data_bytes
+        return binascii.unhexlify(hex_str)
 
     @staticmethod
     def int32_to_big_endian_bytes(i):
@@ -243,8 +238,7 @@ class MbedTlsTest(BaseHostTest):
         :param i: Input integer
         :return: Output bytes array in big endian or network order
         """
-        data_bytes = bytearray([((i >> x) & 0xff) for x in [24, 16, 8, 0]])
-        return data_bytes
+        return bytearray([((i >> x) & 0xff) for x in [24, 16, 8, 0]])
 
     def test_vector_to_bytes(self, function_id, dependencies, parameters):
         """
@@ -306,7 +300,7 @@ class MbedTlsTest(BaseHostTest):
         :param args: test parameters
         :return:
         """
-        self.log("Running: %s" % name)
+        self.log(f"Running: {name}")
 
         param_bytes, length = self.test_vector_to_bytes(function_id,
                                                         dependencies, args)
@@ -373,10 +367,7 @@ class MbedTlsTest(BaseHostTest):
         :return:
         """
         int_val = self.get_result(value)
-        if int_val in self.error_str:
-            err = self.error_str[int_val]
-        else:
-            err = 'Unknown error'
+        err = self.error_str[int_val] if int_val in self.error_str else 'Unknown error'
         # For skip status, do not write {{__testcase_finish;...}}
-        self.log("Error: %s" % err)
+        self.log(f"Error: {err}")
         self.run_next_test()

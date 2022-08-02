@@ -117,10 +117,8 @@ class GenDep(TestCase):
         dependency list.
         :return:
         """
-        dependencies = []
         count = 10
-        for i in range(count):
-            dependencies.append('DEP%d' % i)
+        dependencies = ['DEP%d' % i for i in range(count)]
         dep_start, dep_end = gen_dependencies(dependencies)
         self.assertEqual(len(dep_start.splitlines()), count,
                          'Preprocessor generated incorrectly')
@@ -182,13 +180,10 @@ class GenDepOneLine(TestCase):
         dependency list.
         :return:
         """
-        dependencies = []
         count = 10
-        for i in range(count):
-            dependencies.append('DEP%d' % i)
+        dependencies = ['DEP%d' % i for i in range(count)]
         dep_str = gen_dependencies_one_line(dependencies)
-        expected = '#if ' + ' && '.join(['defined(%s)' %
-                                         x for x in dependencies])
+        expected = ('#if ' + ' && '.join([f'defined({x})' for x in dependencies]))
         self.assertEqual(dep_str, expected,
                          'Preprocessor generated incorrectly')
 
@@ -306,8 +301,7 @@ class StringIOWrapper(StringIO):
         :return: Line read from file.
         """
         parent = super(StringIOWrapper, self)
-        line = parent.__next__()
-        return line
+        return parent.__next__()
 
     def readline(self, _length=0):
         """
@@ -445,7 +439,7 @@ class ParseFuncDependencies(TestCase):
         :return:
         """
         line = '/* BEGIN_CASE ' \
-               'depends_on:MBEDTLS_ENTROPY_NV_SEED:MBEDTLS_FS_IO */'
+                   'depends_on:MBEDTLS_ENTROPY_NV_SEED:MBEDTLS_FS_IO */'
         expected = ['MBEDTLS_ENTROPY_NV_SEED', 'MBEDTLS_FS_IO']
         dependencies = parse_function_dependencies(line)
         self.assertEqual(dependencies, expected)
@@ -837,16 +831,16 @@ void print_hello_world()
     test_func_wrapper,
 '''
         func_mock2.return_value = 'test_func', [],\
-            in_func_code, func_dispatch
+                in_func_code, func_dispatch
         dependencies_str = '/* BEGIN_CASE ' \
-            'depends_on:MBEDTLS_ENTROPY_NV_SEED:MBEDTLS_FS_IO */\n'
+                'depends_on:MBEDTLS_ENTROPY_NV_SEED:MBEDTLS_FS_IO */\n'
         data = '''%svoid test_func()
 {
 }
 ''' % dependencies_str
         stream = StringIOWrapper('test_suite_ut.function', data)
         suite_dependencies, dispatch_code, func_code, func_info = \
-            parse_functions(stream)
+                parse_functions(stream)
         func_mock1.assert_called_with(dependencies_str)
         func_mock2.assert_called_with(stream, [], [])
         self.assertEqual(stream.line_no, 5)
@@ -1523,7 +1517,7 @@ class GenTestSuiteDependenciesChecks(TestCase):
         :return:
         """
         dep_check_code, expression_code = \
-            gen_suite_dep_checks(['SUITE_DEP'], 'DEP_CHECK_CODE',
+                gen_suite_dep_checks(['SUITE_DEP'], 'DEP_CHECK_CODE',
                                  'EXPRESSION_CODE')
         expected_dep_check_code = '''
 #if defined(SUITE_DEP)
@@ -1649,7 +1643,7 @@ func2:"yahoo":88:MACRO1
                      'test_func2': (1, ('char*', 'int', 'int'))}
         suite_dependencies = []
         dep_check_code, expression_code = \
-            gen_from_test_data(data_f, out_data_f, func_info,
+                gen_from_test_data(data_f, out_data_f, func_info,
                                suite_dependencies)
         expected_dep_check_code = '''
         case 0:
